@@ -1,0 +1,8 @@
+{
+  "name": "main-dapp-api",
+  "version": "0.0.0",
+  "main": "index.ts",
+  "author": "Auroch",
+  "license": "MIT",
+  "private": false
+}
