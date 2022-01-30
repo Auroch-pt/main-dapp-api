@@ -4,5 +4,8 @@
   "main": "index.ts",
   "author": "Auroch",
   "license": "MIT",
-  "private": false
+  "private": false,
+  "devDependencies": {
+    "typescript": "^4.5.5"
+  }
 }
