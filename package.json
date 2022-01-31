@@ -18,6 +18,7 @@
     "dependencies": {
         "apollo-fetch": "^0.7.0",
         "cors": "^2.8.5",
+        "dotenv": "^15.0.0",
         "express": "^4.17.2"
     }
 }
