@@ -6,6 +6,7 @@ import {
     HttpLink,
 } from "@apollo/client/core";
 import fetch from "cross-fetch";
+import { isValidChecksumAddress } from "ethereumjs-util";
 import "dotenv/config";
 
 const client = new ApolloClient({
@@ -29,49 +30,55 @@ type User = {
 
 export const authRouter = Router();
 
-authRouter.get(
-    "/auth/:walletAddress/nonce",
-    async (request, response, next) => {
-        const walletAddress = request.params["walletAddress"];
+authRouter.get("/auth/:walletAddress/nonce", async (request, response) => {
+    const walletAddress = request.params["walletAddress"];
 
-        const user = await client
-            .mutate<User, { address: string; nonce: number }>({
-                mutation: gql`
-                    mutation user($address: String!, $nonce: Int!) {
-                        insertUser(
-                            object: { address: $address, nonce: $nonce }
-                            on_conflict: {
-                                constraint: users_pkey
-                                update_columns: nonce
-                            }
-                        ) {
-                            updatedAt
-                            signature
-                            nonce
-                            createdAt
-                            address
-                        }
-                    }
-                `,
-                variables: {
-                    address: walletAddress,
-                    nonce: Math.floor(Math.random() * 1000000),
-                },
-            })
-            .then((result) => {
-                const { data, errors } = result;
+    const isValid = isValidChecksumAddress(walletAddress);
 
-                if (errors) {
-                    response.status(401);
-                    response.send(errors[0].message);
+    if (!isValid) {
+        response.status(401);
+        response.send("address not valid");
 
-                    next(response);
-                }
-
-                return data!.insertUser;
-            });
-
-        response.status(200);
-        response.send(user);
+        return;
     }
-);
+
+    const user = await client
+        .mutate<User, { address: string; nonce: number }>({
+            mutation: gql`
+                mutation user($address: String!, $nonce: Int!) {
+                    insertUser(
+                        object: { address: $address, nonce: $nonce }
+                        on_conflict: {
+                            constraint: users_pkey
+                            update_columns: nonce
+                        }
+                    ) {
+                        updatedAt
+                        signature
+                        nonce
+                        createdAt
+                        address
+                    }
+                }
+            `,
+            variables: {
+                address: walletAddress,
+                nonce: Math.floor(Math.random() * 1000000),
+            },
+        })
+        .then((result) => {
+            const { data, errors } = result;
+
+            if (errors) {
+                response.status(401);
+                response.send(errors[0].message);
+
+                return;
+            }
+
+            return data!.insertUser;
+        });
+
+    response.status(200);
+    response.send(user);
+});
