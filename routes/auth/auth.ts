@@ -16,36 +16,62 @@ const client = new ApolloClient({
     cache: new InMemoryCache(),
 });
 
+type User = {
+    insertUser: {
+        address: string;
+        createdAt: Date;
+        nonce: string;
+        signature: string;
+        updatedAt: Date;
+        __typename: "users";
+    };
+};
+
 export const authRouter = Router();
 
-authRouter.get("/auth/:walletAddress", async (request, response) => {
-    const walletAddress = request.params["walletAddress"];
+authRouter.get(
+    "/auth/:walletAddress/nonce",
+    async (request, response, next) => {
+        const walletAddress = request.params["walletAddress"];
 
-    const user = await client
-        .query({
-            query: gql`
-                query getUser($address: String!) {
-                    user(address: $address) {
-                        address
-                        createdAt
-                        nonce
-                        signature
-                        updatedAt
+        const user = await client
+            .mutate<User, { address: string; nonce: number }>({
+                mutation: gql`
+                    mutation user($address: String!, $nonce: Int!) {
+                        insertUser(
+                            object: { address: $address, nonce: $nonce }
+                            on_conflict: {
+                                constraint: users_pkey
+                                update_columns: nonce
+                            }
+                        ) {
+                            updatedAt
+                            signature
+                            nonce
+                            createdAt
+                            address
+                        }
                     }
+                `,
+                variables: {
+                    address: walletAddress,
+                    nonce: Math.floor(Math.random() * 1000000),
+                },
+            })
+            .then((result) => {
+                const { data, errors } = result;
+
+                if (errors) {
+                    response.status(401);
+                    response.send(errors[0].message);
+
+                    next(response);
                 }
-            `,
-            variables: {
-                address: walletAddress,
-            },
-        })
-        .then((result) => {
-            const { data, error } = result;
-            if (error) {
-                return error;
-            }
 
-            return data;
-        });
+                return data!.insertUser;
+            });
 
-    response.send(user);
-});
+        response.status(200);
+        response.send(user);
+    }
+);
