@@ -26,17 +26,119 @@ const client = new ApolloClient({
     cache: new InMemoryCache(),
 });
 
-type IUser = {
-    insertUser: {
-        address: string;
-        createdAt: Date;
-        nonce: number;
-        updatedAt: Date;
-        __typename: "users";
-    };
+type User = {
+    address: string;
+    nonce: number;
 };
 
 export const authRouter = Router();
+
+const getUser = async (address: string): Promise<User | null> => {
+    type UserQuery = {
+        user: User;
+    };
+
+    const user = await client
+        .query<UserQuery, { address: string }>({
+            query: gql`
+                query user($address: String!) {
+                    user(address: $address) {
+                        address
+                        nonce
+                    }
+                }
+            `,
+            variables: {
+                address: address,
+            },
+            fetchPolicy: "no-cache",
+        })
+        .then((result) => {
+            const { data } = result;
+
+            return data.user;
+        });
+
+    if (!user) {
+        const newUser = await createUser(address);
+
+        return newUser;
+    }
+
+    return user;
+};
+
+const createUser = async (address: string): Promise<User | null> => {
+    type UserMutation = {
+        insertUser: User;
+    };
+
+    const nonce = gerenateNonce();
+
+    const newUser = await client
+        .mutate<UserMutation, User>({
+            mutation: gql`
+                mutation user($address: String!, $nonce: Int!) {
+                    insertUser(
+                        object: { address: $address, nonce: $nonce }
+                        on_conflict: {
+                            constraint: users_pkey
+                            update_columns: nonce
+                        }
+                    ) {
+                        nonce
+                        address
+                    }
+                }
+            `,
+            variables: {
+                address,
+                nonce,
+            },
+            fetchPolicy: "no-cache",
+        })
+        .then((result) => {
+            const { data, errors } = result;
+
+            if (errors) {
+                return null;
+            }
+
+            return data!.insertUser;
+        });
+
+    return newUser;
+};
+
+const updateUserNonce = async (address: string) => {
+    const nonce = gerenateNonce();
+
+    await client
+        .mutate<{}, User>({
+            mutation: gql`
+                mutation updateNonce($address: String!, $nonce: Int!) {
+                    updateUser(
+                        pk_columns: { address: $address }
+                        _set: { nonce: $nonce }
+                    ) {
+                        nonce
+                    }
+                }
+            `,
+            variables: {
+                address,
+                nonce,
+            },
+            fetchPolicy: "no-cache",
+        })
+        .then((result) => result.data);
+};
+
+const gerenateNonce = (): number => {
+    const nonce = Math.floor(Math.random() * 1000000);
+
+    return nonce;
+};
 
 authRouter.get("/auth/:walletAddress/nonce", async (request, response) => {
     const walletAddress = request.params["walletAddress"];
@@ -50,55 +152,18 @@ authRouter.get("/auth/:walletAddress/nonce", async (request, response) => {
         return;
     }
 
-    const user = await client
-        .mutate<IUser, { address: string; nonce: number }>({
-            mutation: gql`
-                mutation user($address: String!, $nonce: Int!) {
-                    insertUser(
-                        object: { address: $address, nonce: $nonce }
-                        on_conflict: {
-                            constraint: users_pkey
-                            update_columns: address
-                        }
-                    ) {
-                        updatedAt
-                        nonce
-                        createdAt
-                        address
-                    }
-                }
-            `,
-            variables: {
-                address: walletAddress,
-                nonce: Math.floor(Math.random() * 1000000),
-            },
-        })
-        .then((result) => {
-            const { data, errors } = result;
+    const user = await getUser(walletAddress);
 
-            if (errors) {
-                response.status(401);
-                response.send(errors[0].message);
+    if (!user) {
+        response.status(401);
+        response.send("error getting or creating the user");
 
-                return;
-            }
-
-            return data!.insertUser;
-        });
+        return;
+    }
 
     response.status(200);
     response.send(user);
 });
-
-type QUser = {
-    user: {
-        address: string;
-        createdAt: Date;
-        nonce: number;
-        updatedAt: Date;
-        __typename: "users";
-    };
-};
 
 authRouter.get(
     "/auth/:walletAddress/signature/:signature",
@@ -115,42 +180,14 @@ authRouter.get(
             return;
         }
 
-        const user = await client
-            .query<QUser, { address: string }>({
-                query: gql`
-                    query user($address: String!) {
-                        user(address: $address) {
-                            address
-                            createdAt
-                            nonce
-                            updatedAt
-                        }
-                    }
-                `,
-                variables: {
-                    address: walletAddress,
-                },
-            })
-            .then((result) => {
-                const { data, error } = result;
-
-                if (error) {
-                    response.status(401);
-                    response.send(error.message);
-
-                    return;
-                }
-
-                return data.user;
-            });
+        const user = await getUser(walletAddress);
 
         if (user) {
             const msg = `Nonce: ${user.nonce}`;
             const msgHex = bufferToHex(Buffer.from(msg));
             const msgBuffer = toBuffer(msgHex);
             const msgHash = hashPersonalMessage(msgBuffer);
-            const signatureBuffer = toBuffer(signature);
-            const singatureParams = fromRpcSig(signatureBuffer);
+            const singatureParams = fromRpcSig(signature);
             const publicKey = ecrecover(
                 msgHash,
                 singatureParams.v,
@@ -161,36 +198,7 @@ authRouter.get(
             const address = bufferToHex(addressBuffer);
 
             if (address.toLowerCase() === walletAddress.toLowerCase()) {
-                await client
-                    .mutate({
-                        mutation: gql`
-                            mutation updateNonce(
-                                $address: String!
-                                $nonce: Int!
-                            ) {
-                                updateUser(
-                                    pk_columns: { address: $address }
-                                    _set: { nonce: $nonce }
-                                ) {
-                                    nonce
-                                }
-                            }
-                        `,
-                        variables: {
-                            address: walletAddress,
-                            nonce: Math.floor(Math.random() * 1000000),
-                        },
-                    })
-                    .then((result) => {
-                        const { errors } = result;
-
-                        if (errors) {
-                            response.status(401);
-                            response.send(errors[0].message);
-
-                            return;
-                        }
-                    });
+                await updateUserNonce(walletAddress);
 
                 const token = jwt.sign(
                     {
