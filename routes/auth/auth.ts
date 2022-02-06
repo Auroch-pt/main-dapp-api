@@ -82,13 +82,7 @@ const createUser = async (address: string): Promise<User | null> => {
         .mutate<UserMutation, User>({
             mutation: gql`
                 mutation user($address: String!, $nonce: Int!) {
-                    insertUser(
-                        object: { address: $address, nonce: $nonce }
-                        on_conflict: {
-                            constraint: users_pkey
-                            update_columns: nonce
-                        }
-                    ) {
+                    insertUser(object: { address: $address, nonce: $nonce }) {
                         nonce
                         address
                     }
