@@ -5,6 +5,7 @@ declare global {
             NODE_ENV: "development" | "production";
             PORT?: string;
             JWT_SECRET: string;
+            HASURA_ADMIN_SECRET: string;
         }
     }
 }
