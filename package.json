@@ -5,6 +5,9 @@
     "author": "Auroch",
     "license": "MIT",
     "private": false,
+    "engines": {
+        "node": "14.x"
+    },
     "scripts": {
         "start": "node dist/index.js",
         "dev": "tsc -w & nodemon dist/index.js",
