@@ -5,8 +5,6 @@ declare global {
             NODE_ENV: "development" | "production";
             PORT?: string;
             JWT_SECRET: string;
-            GITHUB_APP_ID: number;
-            GITHUB_APP_PRIVATE_KEY: string;
             HASURA_ADMIN_SECRET: string;
         }
     }
